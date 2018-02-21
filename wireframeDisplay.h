@@ -101,6 +101,7 @@ class wireframeDisplay : public MPxLocatorNode {
     // static  MObject         _inputColor;
     static MObject _inputAlpha;
     static MObject _lineWidth;
+    static MObject _enableSmooth;
 
    public:
     static MTypeId id;
@@ -130,6 +131,7 @@ class wireframeDisplayData : public MUserData {
 
     MColor fColor;
     int lineWidth = 1;
+    bool enableSmooth = true;
     float color[4] = {1.0f, 0.0f, 0.0f, 0.1f};
     float transparency = .5;
     MPointArray edgeVertices;

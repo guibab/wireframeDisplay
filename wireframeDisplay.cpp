@@ -1,7 +1,9 @@
 #include "wireframeDisplay.h"
 
 #include <maya/MFnMesh.h>
+#include <maya/MFnMeshData.h>
 #include <maya/MItMeshEdge.h>
+#include <maya/MItMeshVertex.h>
 
 #include "shapesDefinition.h"
 
@@ -15,6 +17,7 @@ MObject wireframeDisplay::_inMesh;
 // MObject wireframeDisplay::_inputColor;
 MObject wireframeDisplay::_inputAlpha;
 MObject wireframeDisplay::_lineWidth;
+MObject wireframeDisplay::_enableSmooth;
 
 MTypeId wireframeDisplay::id(0x001226F2);
 MString wireframeDisplay::drawDbClassification("drawdb/geometry/wireframeDisplay");
@@ -77,6 +80,7 @@ void wireframeDisplayData::getPlugs(const MObject& node, bool getCol) {
         this->transparency = MPlug(node, wireframeDisplay::_inputAlpha).asFloat();
     }
     this->lineWidth = MPlug(node, wireframeDisplay::_lineWidth).asInt();
+    this->enableSmooth = MPlug(node, wireframeDisplay::_enableSmooth).asBool();
 }
 void wireframeDisplayData::get(const MObject& node) {
     MStatus status;
@@ -84,16 +88,61 @@ void wireframeDisplayData::get(const MObject& node) {
     // get the wireframe
     this->edgeVertices.clear();
     this->theBoundingBox = MBoundingBox();
-    MPoint pt0, pt1;
     if (this->inMesh != MObject::kNullObj) {
-        MItMeshEdge edgeIter(this->inMesh);
-        for (; !edgeIter.isDone(); edgeIter.next()) {
-            pt0 = edgeIter.point(0);
-            pt1 = edgeIter.point(1);
-            this->edgeVertices.append(pt0);
-            this->edgeVertices.append(pt1);
-            this->theBoundingBox.expand(pt0);
-            this->theBoundingBox.expand(pt1);
+        MPoint pt0, pt1;
+
+        MFnMesh tmpMesh(this->inMesh, &status);
+        MFnMeshData meshData;
+        MMeshSmoothOptions options;
+        tmpMesh.getSmoothMeshDisplayOptions(options);
+
+        int smoothLevel = 0;
+        if (this->enableSmooth)
+            smoothLevel = tmpMesh.findPlug("displaySmoothMesh", false, &status).asInt();
+        if (smoothLevel > 0) {
+            // options.setDivisions(smoothLevel);
+            options.setDivisions(1);
+            // https://github.com/haggi/OpenMaya/blob/master/src/common/cpp/mayaObject.cpp
+
+            MObject dataObject = meshData.create();
+            MObject smoothedObj = tmpMesh.generateSmoothMesh(dataObject, &options, &status);
+
+            // MObject smoothedObj= tmpMesh.generateSmoothMesh(dataObject);
+            // status = tmpMesh.getSmoothMeshDisplayOptions(options);
+            //
+            int nbVerts = tmpMesh.numVertices();
+            MItMeshVertex vertIter(smoothedObj);
+            MIntArray surroundingVertices;
+
+            MPointArray smoothVerticesPos;
+            MFnMesh smoothMesh(smoothedObj, &status);
+            smoothMesh.getPoints(smoothVerticesPos, MSpace::kObject);
+            MPoint pt;
+            for (int i = 0; i < nbVerts; ++i) {
+                vertIter.getConnectedVertices(surroundingVertices);
+                pt0 = vertIter.position();
+                this->theBoundingBox.expand(pt0);
+
+                int nbSurrounding = surroundingVertices.length();
+                for (int k = 0; k < nbSurrounding; ++k) {
+                    int vtxAround = surroundingVertices[k];
+                    pt = smoothVerticesPos[vtxAround];
+                    this->edgeVertices.append(pt0);
+                    this->edgeVertices.append(pt);
+                    this->theBoundingBox.expand(pt);
+                }
+                vertIter.next();
+            }
+        } else {
+            MItMeshEdge edgeIter(this->inMesh);
+            for (; !edgeIter.isDone(); edgeIter.next()) {
+                pt0 = edgeIter.point(0);  // +MPoint(0, 1, 1);
+                pt1 = edgeIter.point(1);
+                this->edgeVertices.append(pt0);
+                this->edgeVertices.append(pt1);
+                this->theBoundingBox.expand(pt0);
+                this->theBoundingBox.expand(pt1);
+            }
         }
     }
 }
@@ -392,6 +441,16 @@ MStatus wireframeDisplay::initialize() {
 
     // add the color attribute to our node
     stat = addAttribute(_lineWidth);
+
+    _enableSmooth = nAttr.create("enableSmooth", "es", MFnNumericData::kBoolean, false);
+    nAttr.setKeyable(true);
+    nAttr.setStorable(true);
+    nAttr.setReadable(true);
+    nAttr.setWritable(true);
+    nAttr.setChannelBox(false);
+
+    // add the color attribute to our node
+    stat = addAttribute(_enableSmooth);
 
     return MS::kSuccess;
 }
