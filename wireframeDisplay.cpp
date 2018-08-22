@@ -87,6 +87,7 @@ void wireframeDisplayData::get(const MObject& node) {
 
     // get the wireframe
     this->edgeVertices.clear();
+    this->edgeVerticesIndices.clear();
     this->theBoundingBox = MBoundingBox();
     if (this->inMesh != MObject::kNullObj) {
         MPoint pt0, pt1;
@@ -95,6 +96,7 @@ void wireframeDisplayData::get(const MObject& node) {
         MFnMeshData meshData;
         MMeshSmoothOptions options;
         tmpMesh.getSmoothMeshDisplayOptions(options);
+        this->theBoundingBox = tmpMesh.boundingBox(&status);
 
         int smoothLevel = 0;
         if (this->enableSmooth)
@@ -102,46 +104,63 @@ void wireframeDisplayData::get(const MObject& node) {
         if (smoothLevel > 0) {
             // options.setDivisions(smoothLevel);
             options.setDivisions(1);
+            options.setSmoothUVs(false);
             // https://github.com/haggi/OpenMaya/blob/master/src/common/cpp/mayaObject.cpp
 
             MObject dataObject = meshData.create();
             MObject smoothedObj = tmpMesh.generateSmoothMesh(dataObject, &options, &status);
-
+            MFnMesh smoothMesh(smoothedObj, &status);
+            this->mayaRawPoints = smoothMesh.getRawPoints(&status);
             // MObject smoothedObj= tmpMesh.generateSmoothMesh(dataObject);
             // status = tmpMesh.getSmoothMeshDisplayOptions(options);
             //
             int nbVerts = tmpMesh.numVertices();
-            MItMeshVertex vertIter(smoothedObj);
-            MIntArray surroundingVertices;
+            int pt0Index, pt1Index;
+            MItMeshEdge edgeIter(smoothedObj);
 
-            MPointArray smoothVerticesPos;
-            MFnMesh smoothMesh(smoothedObj, &status);
-            smoothMesh.getPoints(smoothVerticesPos, MSpace::kObject);
-            MPoint pt;
-            for (int i = 0; i < nbVerts; ++i) {
-                vertIter.getConnectedVertices(surroundingVertices);
-                pt0 = vertIter.position();
-                this->theBoundingBox.expand(pt0);
-
-                int nbSurrounding = surroundingVertices.length();
-                for (int k = 0; k < nbSurrounding; ++k) {
-                    int vtxAround = surroundingVertices[k];
-                    pt = smoothVerticesPos[vtxAround];
-                    this->edgeVertices.append(pt0);
-                    this->edgeVertices.append(pt);
-                    this->theBoundingBox.expand(pt);
+            for (; !edgeIter.isDone(); edgeIter.next()) {
+                pt0Index = edgeIter.index(0);
+                pt1Index = edgeIter.index(1);
+                if (pt0Index < nbVerts || pt1Index < nbVerts) {
+                    // pt1 = edgeIter.point(1);
+                    // this->edgeVertices.append(MPoint());
+                    // this->edgeVertices.append(pt1);
+                    this->edgeVerticesIndices.append(pt0Index);
+                    this->edgeVerticesIndices.append(pt1Index);
+                    this->edgeVertices.append(MPoint(this->mayaRawPoints[pt0Index * 3],
+                                                     this->mayaRawPoints[pt0Index * 3 + 1],
+                                                     this->mayaRawPoints[pt0Index * 3 + 2]));
+                    this->edgeVertices.append(MPoint(this->mayaRawPoints[pt1Index * 3],
+                                                     this->mayaRawPoints[pt1Index * 3 + 1],
+                                                     this->mayaRawPoints[pt1Index * 3 + 2]));
                 }
-                vertIter.next();
             }
         } else {
             MItMeshEdge edgeIter(this->inMesh);
+            int pt0Index, pt1Index;
+            this->mayaRawPoints = tmpMesh.getRawPoints(&status);
             for (; !edgeIter.isDone(); edgeIter.next()) {
-                pt0 = edgeIter.point(0);  // +MPoint(0, 1, 1);
-                pt1 = edgeIter.point(1);
-                this->edgeVertices.append(pt0);
-                this->edgeVertices.append(pt1);
-                this->theBoundingBox.expand(pt0);
-                this->theBoundingBox.expand(pt1);
+                // pt0 = edgeIter.point(0);// +MPoint(0, 1, 1);
+                // pt1 = edgeIter.point(1);
+
+                // this->edgeVertices.append(pt0);
+                // this->edgeVertices.append(pt1);
+
+                pt0Index = edgeIter.index(0);
+                pt1Index = edgeIter.index(1);
+
+                this->edgeVerticesIndices.append(pt0Index);
+                this->edgeVerticesIndices.append(pt1Index);
+
+                this->edgeVertices.append(MPoint(this->mayaRawPoints[pt0Index * 3],
+                                                 this->mayaRawPoints[pt0Index * 3 + 1],
+                                                 this->mayaRawPoints[pt0Index * 3 + 2]));
+                this->edgeVertices.append(MPoint(this->mayaRawPoints[pt1Index * 3],
+                                                 this->mayaRawPoints[pt1Index * 3 + 1],
+                                                 this->mayaRawPoints[pt1Index * 3 + 2]));
+
+                // this->theBoundingBox.expand(pt0);
+                // this->theBoundingBox.expand(pt1);
             }
         }
     }
@@ -180,7 +199,8 @@ void wireframeDisplay::draw(M3dView& view, const MDagPath& path, M3dView::Displa
 
     // Draw the wireframe
     glEnable(GL_BLEND);
-    glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
+    // glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
+    glBlendFunc(GL_SRC_ALPHA, GL_ONE);
 
     // prevent the quad from writing to the z buffer.
     // glDepthFunc(GL_NEVER);
@@ -200,10 +220,17 @@ void wireframeDisplay::draw(M3dView& view, const MDagPath& path, M3dView::Displa
     }
 
     int nbEdges = data.edgeVertices.length();
+    int indexPt;
     for (int i = 0; i < nbEdges; i += 2) {
-        glVertex3f(data.edgeVertices[i].x, data.edgeVertices[i].y, data.edgeVertices[i].z);
-        glVertex3f(data.edgeVertices[i + 1].x, data.edgeVertices[i + 1].y,
-                   data.edgeVertices[i + 1].z);
+        indexPt = data.edgeVerticesIndices[i];
+        glVertex3f(data.mayaRawPoints[indexPt * 3], data.mayaRawPoints[indexPt * 3 + 1],
+                   data.mayaRawPoints[indexPt * 3 + 2]);
+        indexPt = data.edgeVerticesIndices[i + 1];
+        glVertex3f(data.mayaRawPoints[indexPt * 3], data.mayaRawPoints[indexPt * 3 + 1],
+                   data.mayaRawPoints[indexPt * 3 + 2]);
+
+        // glVertex3f(data.edgeVertices[i].x, data.edgeVertices[i].y, data.edgeVertices[i].z);
+        // glVertex3f(data.edgeVertices[i+1].x, data.edgeVertices[i+1].y, data.edgeVertices[i+1].z);
     }
     glEnd();
     glLineWidth(1);

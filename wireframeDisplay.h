@@ -134,9 +134,12 @@ class wireframeDisplayData : public MUserData {
     bool enableSmooth = true;
     float color[4] = {1.0f, 0.0f, 0.0f, 0.1f};
     float transparency = .5;
+    MIntArray edgeVerticesIndices;
     MPointArray edgeVertices;
+
     MBoundingBox theBoundingBox;
     MObject inMesh;
+    const float* mayaRawPoints;
     MHWRender::DisplayStatus displayStat;
 };
 
