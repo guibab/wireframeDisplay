@@ -84,8 +84,10 @@ class wireframeDisplay : public MPxLocatorNode {
 
     virtual MStatus compute(const MPlug& plug, MDataBlock& data);
     virtual void wireframeDisplay::postConstructor();
+
     virtual void draw(M3dView& view, const MDagPath& path, M3dView::DisplayStyle style,
                       M3dView::DisplayStatus status);
+
     // virtual MStatus         setDependentsDirty(const MPlug& dirty_plug, MPlugArray&
     // affected_plugs);
 
@@ -102,6 +104,8 @@ class wireframeDisplay : public MPxLocatorNode {
     static MObject _inputAlpha;
     static MObject _lineWidth;
     static MObject _enableSmooth;
+    static MObject _boundingBoxMini;
+    static MObject _boundingBoxMaxi;
 
    public:
     static MTypeId id;
@@ -122,6 +126,11 @@ class wireframeDisplay : public MPxLocatorNode {
 //---------------------------------------------------------------------------
 
 class wireframeDisplayData : public MUserData {
+   private:
+    int nbEdges = 0;
+    int arrayLength = 0;
+    MIntArray edgeVerticesIndices;
+
    public:
     wireframeDisplayData() : MUserData(false){};  // don't delete after draw
     virtual ~wireframeDisplayData(){};
@@ -134,9 +143,7 @@ class wireframeDisplayData : public MUserData {
     bool enableSmooth = true;
     float color[4] = {1.0f, 0.0f, 0.0f, 0.1f};
     float transparency = .5;
-    MIntArray edgeVerticesIndices;
     MPointArray edgeVertices;
-
     MBoundingBox theBoundingBox;
     MObject inMesh;
     const float* mayaRawPoints;

@@ -18,6 +18,8 @@ MObject wireframeDisplay::_inMesh;
 MObject wireframeDisplay::_inputAlpha;
 MObject wireframeDisplay::_lineWidth;
 MObject wireframeDisplay::_enableSmooth;
+MObject wireframeDisplay::_boundingBoxMini;
+MObject wireframeDisplay::_boundingBoxMaxi;
 
 MTypeId wireframeDisplay::id(0x001226F2);
 MString wireframeDisplay::drawDbClassification("drawdb/geometry/wireframeDisplay");
@@ -82,12 +84,77 @@ void wireframeDisplayData::getPlugs(const MObject& node, bool getCol) {
     this->lineWidth = MPlug(node, wireframeDisplay::_lineWidth).asInt();
     this->enableSmooth = MPlug(node, wireframeDisplay::_enableSmooth).asBool();
 }
+MBoundingBox getBB(const MObject& node) {
+    MStatus status;
+    /*
+    MPlug meshPlug = MPlug(node, wireframeDisplay::_inMesh);
+    MPlugArray plugs;
+    meshPlug.connectedTo(plugs, true, false, &status);
+
+    if (plugs.length() == 0) {
+            //MGlobal::displayError("Unable to rebind.  No bind mesh is connected.");
+    }
+    else {
+            this->inMesh = plugs[0].node();
+            // get the BB
+            MFnMesh tmpMesh(this->inMesh, &status);
+            this->theBoundingBox =tmpMesh.boundingBox(&status);
+    }
+    */
+    MPlugArray plugs;
+    MPlug c1Plug(node, wireframeDisplay::_boundingBoxMini);
+    MPlug c2Plug(node, wireframeDisplay::_boundingBoxMaxi);
+
+    c1Plug.connectedTo(plugs, true, false, &status);
+    if (plugs.length() == 0) {  // not connected boundingBox min
+        MPlug meshPlug = MPlug(node, wireframeDisplay::_inMesh);
+        meshPlug.connectedTo(plugs, true, false, &status);
+        if (plugs.length() != 0) {  // connected inMesh
+
+            MGlobal::displayInfo("doing boundingBox connection");
+            MObject meshObj = plugs[0].node();
+            MFnDependencyNode meshObjDep(meshObj, &status);
+            if (MS::kSuccess != status) {
+                MGlobal::displayError("MFnDependencyNode meshObjDep(meshObj, &status);");
+            }
+            /*
+            MPlug meshBB = meshObjDep.findPlug("boundingBox", false, &status);
+            if (MS::kSuccess != status) {
+                    MGlobal::displayError("meshObjDep.findPlug(boundingBox, false, &status)");
+            }
+            //MGlobal::displayInfo(meshBB.name());
+            */
+
+            MPlug meshBBMI = meshObjDep.findPlug("boundingBoxMin");
+            MPlug meshBBMX = meshObjDep.findPlug("boundingBoxMax");
+            // MGlobal::displayInfo(meshBBMI.name());
+
+            MDGModifier dg;
+            status = dg.connect(meshBBMI, c1Plug);
+            if (MS::kSuccess != status) {
+                MGlobal::displayError("connect ERROR " + meshBBMI.name() + " " + c1Plug.name());
+            }
+            status = dg.connect(meshBBMX, c2Plug);
+            dg.doIt();
+        }
+    }
+    double Xval1 = c1Plug.child(0).asDouble();
+    double Yval1 = c1Plug.child(1).asDouble();
+    double Zval1 = c1Plug.child(2).asDouble();
+    MPoint corner1Point(Xval1, Yval1, Zval1);
+    double Xval2 = c2Plug.child(0).asDouble();
+    double Yval2 = c2Plug.child(1).asDouble();
+    double Zval2 = c2Plug.child(2).asDouble();
+    MPoint corner2Point(Xval2, Yval2, Zval2);
+
+    return MBoundingBox(corner1Point, corner2Point);
+}
 void wireframeDisplayData::get(const MObject& node) {
     MStatus status;
+    // MGlobal::displayInfo(MString("---- call wireframeDisplayData::get --- ") );
 
     // get the wireframe
     this->edgeVertices.clear();
-    this->edgeVerticesIndices.clear();
     this->theBoundingBox = MBoundingBox();
     if (this->inMesh != MObject::kNullObj) {
         MPoint pt0, pt1;
@@ -98,6 +165,16 @@ void wireframeDisplayData::get(const MObject& node) {
         tmpMesh.getSmoothMeshDisplayOptions(options);
         this->theBoundingBox = tmpMesh.boundingBox(&status);
 
+        bool recomputeEdgeAssociation = false;
+        int currentNbEdges = tmpMesh.numEdges();
+        if (currentNbEdges != this->nbEdges) {  // if mesh is updated with more edges
+            MGlobal::displayInfo(MString("---- wireframeDisplayData::get - recompute edges : ") +
+                                 this->nbEdges + MString(" - ") + currentNbEdges);
+
+            this->edgeVerticesIndices.clear();
+            recomputeEdgeAssociation = true;
+            this->nbEdges = currentNbEdges;
+        }
         int smoothLevel = 0;
         if (this->enableSmooth)
             smoothLevel = tmpMesh.findPlug("displaySmoothMesh", false, &status).asInt();
@@ -111,57 +188,44 @@ void wireframeDisplayData::get(const MObject& node) {
             MObject smoothedObj = tmpMesh.generateSmoothMesh(dataObject, &options, &status);
             MFnMesh smoothMesh(smoothedObj, &status);
             this->mayaRawPoints = smoothMesh.getRawPoints(&status);
-            // MObject smoothedObj= tmpMesh.generateSmoothMesh(dataObject);
-            // status = tmpMesh.getSmoothMeshDisplayOptions(options);
-            //
-            int nbVerts = tmpMesh.numVertices();
-            int pt0Index, pt1Index;
-            MItMeshEdge edgeIter(smoothedObj);
 
-            for (; !edgeIter.isDone(); edgeIter.next()) {
-                pt0Index = edgeIter.index(0);
-                pt1Index = edgeIter.index(1);
-                if (pt0Index < nbVerts || pt1Index < nbVerts) {
-                    // pt1 = edgeIter.point(1);
-                    // this->edgeVertices.append(MPoint());
-                    // this->edgeVertices.append(pt1);
-                    this->edgeVerticesIndices.append(pt0Index);
-                    this->edgeVerticesIndices.append(pt1Index);
-                    this->edgeVertices.append(MPoint(this->mayaRawPoints[pt0Index * 3],
-                                                     this->mayaRawPoints[pt0Index * 3 + 1],
-                                                     this->mayaRawPoints[pt0Index * 3 + 2]));
-                    this->edgeVertices.append(MPoint(this->mayaRawPoints[pt1Index * 3],
-                                                     this->mayaRawPoints[pt1Index * 3 + 1],
-                                                     this->mayaRawPoints[pt1Index * 3 + 2]));
+            if (recomputeEdgeAssociation) {
+                int nbVerts = tmpMesh.numVertices();
+                MItMeshEdge edgeIter(smoothedObj);
+
+                for (; !edgeIter.isDone(); edgeIter.next()) {
+                    int pt0Index = edgeIter.index(0);
+                    int pt1Index = edgeIter.index(1);
+                    if (pt0Index < nbVerts || pt1Index < nbVerts) {
+                        this->edgeVerticesIndices.append(pt0Index);
+                        this->edgeVerticesIndices.append(pt1Index);
+                    }
                 }
             }
         } else {
-            MItMeshEdge edgeIter(this->inMesh);
-            int pt0Index, pt1Index;
             this->mayaRawPoints = tmpMesh.getRawPoints(&status);
-            for (; !edgeIter.isDone(); edgeIter.next()) {
-                // pt0 = edgeIter.point(0);// +MPoint(0, 1, 1);
-                // pt1 = edgeIter.point(1);
-
-                // this->edgeVertices.append(pt0);
-                // this->edgeVertices.append(pt1);
-
-                pt0Index = edgeIter.index(0);
-                pt1Index = edgeIter.index(1);
-
-                this->edgeVerticesIndices.append(pt0Index);
-                this->edgeVerticesIndices.append(pt1Index);
-
-                this->edgeVertices.append(MPoint(this->mayaRawPoints[pt0Index * 3],
-                                                 this->mayaRawPoints[pt0Index * 3 + 1],
-                                                 this->mayaRawPoints[pt0Index * 3 + 2]));
-                this->edgeVertices.append(MPoint(this->mayaRawPoints[pt1Index * 3],
-                                                 this->mayaRawPoints[pt1Index * 3 + 1],
-                                                 this->mayaRawPoints[pt1Index * 3 + 2]));
-
-                // this->theBoundingBox.expand(pt0);
-                // this->theBoundingBox.expand(pt1);
+            if (recomputeEdgeAssociation) {
+                MItMeshEdge edgeIter(this->inMesh);
+                for (; !edgeIter.isDone(); edgeIter.next()) {
+                    int pt0Index = edgeIter.index(0);
+                    int pt1Index = edgeIter.index(1);
+                    this->edgeVerticesIndices.append(pt0Index);
+                    this->edgeVerticesIndices.append(pt1Index);
+                }
             }
+        }
+        if (recomputeEdgeAssociation) this->arrayLength = this->edgeVerticesIndices.length();
+        this->edgeVertices.setLength(this->arrayLength);
+        for (unsigned int i = 0; i < this->arrayLength; ++i) {
+            int ptIndex = this->edgeVerticesIndices[i];
+            // this->edgeVertices.append(MPoint(this->mayaRawPoints[ptIndex * 3],
+            // this->mayaRawPoints[ptIndex * 3 + 1], this->mayaRawPoints[ptIndex * 3 + 2]));
+            // this->edgeVertices.set( MPoint(this->mayaRawPoints[ptIndex * 3],
+            // this->mayaRawPoints[ptIndex * 3 + 1], this->mayaRawPoints[ptIndex * 3 + 2]), i);
+            float element[4] = {this->mayaRawPoints[ptIndex * 3],
+                                this->mayaRawPoints[ptIndex * 3 + 1],
+                                this->mayaRawPoints[ptIndex * 3 + 2], 0};
+            this->edgeVertices.set(element, i);
         }
     }
 }
@@ -222,15 +286,9 @@ void wireframeDisplay::draw(M3dView& view, const MDagPath& path, M3dView::Displa
     int nbEdges = data.edgeVertices.length();
     int indexPt;
     for (int i = 0; i < nbEdges; i += 2) {
-        indexPt = data.edgeVerticesIndices[i];
-        glVertex3f(data.mayaRawPoints[indexPt * 3], data.mayaRawPoints[indexPt * 3 + 1],
-                   data.mayaRawPoints[indexPt * 3 + 2]);
-        indexPt = data.edgeVerticesIndices[i + 1];
-        glVertex3f(data.mayaRawPoints[indexPt * 3], data.mayaRawPoints[indexPt * 3 + 1],
-                   data.mayaRawPoints[indexPt * 3 + 2]);
-
-        // glVertex3f(data.edgeVertices[i].x, data.edgeVertices[i].y, data.edgeVertices[i].z);
-        // glVertex3f(data.edgeVertices[i+1].x, data.edgeVertices[i+1].y, data.edgeVertices[i+1].z);
+        glVertex3f(data.edgeVertices[i].x, data.edgeVertices[i].y, data.edgeVertices[i].z);
+        glVertex3f(data.edgeVertices[i + 1].x, data.edgeVertices[i + 1].y,
+                   data.edgeVertices[i + 1].z);
     }
     glEnd();
     glLineWidth(1);
@@ -256,12 +314,10 @@ MBoundingBox wireframeDisplay::boundingBox() const {
     // Get the size
     //
     MObject thisNode = thisMObject();
-    wireframeDisplayData data;
 
-    data.getPlugs(_self, false);
-    data.get(_self);
+    return getBB(_self);
     // data.get(thisMObject(), _transformMatrix);
-    return data.theBoundingBox;
+    // return data.theBoundingBox;
 }
 
 void* wireframeDisplay::creator() { return new wireframeDisplay(); }
@@ -319,11 +375,12 @@ bool wireframeDisplayDrawOverride::isBounded(const MDagPath& /*objPath*/,
 
 MBoundingBox wireframeDisplayDrawOverride::boundingBox(const MDagPath& objPath,
                                                        const MDagPath& cameraPath) const {
-    wireframeDisplayData data;
+    // wireframeDisplayData      data;
     MObject node = objPath.node();
-    data.getPlugs(node, false);
-    data.get(node);
-    return data.theBoundingBox;
+    // data.getBB(node);
+    // return data.theBoundingBox;
+    return getBB(node);
+
     // return MBoundingBox (MPoint(-.5, -.5, -.5), MPoint(.5, .5, .5));
 }
 
@@ -369,7 +426,7 @@ void wireframeDisplayDrawOverride::addUIDrawables(const MDagPath& objPath,
         return;
     }
 
-    drawManager.beginDrawable();
+    drawManager.beginDrawable(MHWRender::MUIDrawManager::kNonSelectable);  // so not selectable
     // drawManager.beginDrawInXray();
     // MColor color(1., 0., 0., .2);
     if (pLocatorData->displayStat == MHWRender::kLead) {
@@ -478,6 +535,21 @@ MStatus wireframeDisplay::initialize() {
 
     // add the color attribute to our node
     stat = addAttribute(_enableSmooth);
+
+    // to compute the bounding box
+    _boundingBoxMini = nAttr.createPoint("boundingBoxMini", "bbmini");
+    nAttr.setDefault(0., 0., 0.);
+    nAttr.setStorable(true);
+    nAttr.setKeyable(true);
+    nAttr.setWritable(true);
+    stat = addAttribute(_boundingBoxMini);
+
+    _boundingBoxMaxi = nAttr.createPoint("boundingBoxMaxi", "bbmaxi");
+    nAttr.setDefault(0., 0., 0.);
+    nAttr.setStorable(true);
+    nAttr.setKeyable(true);
+    nAttr.setWritable(true);
+    stat = addAttribute(_boundingBoxMaxi);
 
     return MS::kSuccess;
 }
