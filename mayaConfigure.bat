@@ -12,6 +12,8 @@ cd %BUILD%
 
 cmake ^
     -DMAYA_VERSION=%MAYA_VERSION% ^
+    -DMAYA_INSTALL_BASE_PATH="D:/Program Files/Autodesk" ^
+    -DCMAKE_INSTALL_PREFIX=.. ^
     -G "%COMPILER%" ..\
 
 cmake --build . --config Release --target Install
