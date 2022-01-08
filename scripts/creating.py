@@ -1,3 +1,4 @@
+from __future__ import absolute_import
 from maya import cmds
 
 cmds.loadPlugin("wireframeDisplay")
