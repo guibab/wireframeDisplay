@@ -72,7 +72,7 @@ void wireframeDisplayData::getPlugs(const MObject& node, bool getCol) {
     }
     MFnDagNode fn(node);
     if (getCol) {
-        MPlug inputColPlug = fn.findPlug("overrideColorRGB");
+        MPlug inputColPlug = fn.findPlug("overrideColorRGB", false);
         // MPlug inputColPlug = MPlug(node, MPxLocatorNode::overrideColorR);
         this->color[0] = inputColPlug.child(0).asFloat();
         this->color[1] = inputColPlug.child(1).asFloat();
@@ -125,8 +125,8 @@ MBoundingBox getBB(const MObject& node) {
             //MGlobal::displayInfo(meshBB.name());
             */
 
-            MPlug meshBBMI = meshObjDep.findPlug("boundingBoxMin");
-            MPlug meshBBMX = meshObjDep.findPlug("boundingBoxMax");
+            MPlug meshBBMI = meshObjDep.findPlug("boundingBoxMin", false);
+            MPlug meshBBMX = meshObjDep.findPlug("boundingBoxMax", false);
             // MGlobal::displayInfo(meshBBMI.name());
 
             MDGModifier dg;
@@ -252,6 +252,7 @@ MStatus wireframeDisplay::compute(const MPlug& plug, MDataBlock& data) {
     return MS::kSuccess;
 }
 
+#ifdef MAYA_LEGACY_DISPLAY
 // called by legacy default viewport
 void wireframeDisplay::draw(M3dView& view, const MDagPath& path, M3dView::DisplayStyle style,
                             M3dView::DisplayStatus status) {
@@ -307,6 +308,7 @@ void wireframeDisplay::draw(M3dView& view, const MDagPath& path, M3dView::Displa
     view.drawText( MString("wireframeDisplay"), MPoint( 0.0, 0.0, 0.0 ), M3dView::kCenter );
     */
 }
+#endif
 
 bool wireframeDisplay::isBounded() const { return true; }
 

@@ -83,11 +83,12 @@ class wireframeDisplay : public MPxLocatorNode {
     virtual ~wireframeDisplay();
 
     virtual MStatus compute(const MPlug& plug, MDataBlock& data);
-    virtual void wireframeDisplay::postConstructor();
+    virtual void postConstructor();
 
+#ifdef MAYA_LEGACY_DISPLAY
     virtual void draw(M3dView& view, const MDagPath& path, M3dView::DisplayStyle style,
                       M3dView::DisplayStatus status);
-
+#endif
     // virtual MStatus         setDependentsDirty(const MPlug& dirty_plug, MPlugArray&
     // affected_plugs);
 
@@ -132,7 +133,11 @@ class wireframeDisplayData : public MUserData {
     MIntArray edgeVerticesIndices;
 
    public:
-    wireframeDisplayData() : MUserData(false){};  // don't delete after draw
+    wireframeDisplayData()
+#if MAYA_API_VERSION < 20230000
+      : MUserData(false) // don't delete after draw
+#endif
+    {}
     virtual ~wireframeDisplayData(){};
 
     virtual void get(const MObject&);

@@ -1,22 +1,34 @@
-cmake_minimum_required(VERSION 3.2.2)
-project(wireframeDisplay)
+cmake_minimum_required(VERSION 3.9)
+
+project(
+    "wireframeDisplay"
+    VERSION 1.0
+    DESCRIPTION "A quick smooth with border conditions"
+    LANGUAGES CXX
+)
 
 set(CMAKE_MODULE_PATH ${CMAKE_CURRENT_SOURCE_DIR}/cmake)
-SET(MAYA_VERSION 2020 CACHE STRING "Maya version number")
-SET(MODULE_NAME ${PROJECT_NAME} CACHE STRING "Name of the module")
+set(CMAKE_CXX_STANDARD 14)
 
-file(GLOB SOURCE_FILES "src/*.*")
+# (defined in FindMaya.cmake, copied here for reference)
+# set(MAYA_INSTALL_BASE_PATH "" CACHE STRING
+#     "Root path containing your maya installations, e.g. /usr/autodesk or /Applications/Autodesk/"
+# )
+set(MAYA_VERSION 2020 CACHE STRING "Maya version")
 
-FIND_PACKAGE(OpenGL REQUIRED)
-FIND_PACKAGE(Maya REQUIRED)
+set(MAYA_FILES
+    "src/PluginMain.cpp"
+    "src/wireframeDisplay.cpp"
+    "src/shapesDefinition.h"
+    "src/wireframeDisplay.h"
+)
 
-set_property(DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR} PROPERTY VS_STARTUP_PROJECT ${PROJECT_NAME})
-
-include_directories(${MAYA_INCLUDE_DIR} maya lib ${OPENGL_INCLUDE_DIRS} ${GLUT_INCLUDE_DIRS})
-link_directories(${MAYA_LIBRARY_DIR})
-add_library(${PROJECT_NAME} SHARED ${SOURCE_FILES})
-target_link_libraries(${PROJECT_NAME} ${MAYA_LIBRARIES} ${OPENGL_LIBRARIES})
-
+find_package(OpenGL REQUIRED)
+find_package(Maya REQUIRED)
+add_library(${PROJECT_NAME} SHARED ${MAYA_FILES})
+target_link_libraries(${PROJECT_NAME} PRIVATE Maya::Maya OpenGL::GL)
+target_include_directories(${PROJECT_NAME} 
+    PRIVATE Maya::Maya
+    PUBLIC "${CMAKE_CURRENT_BINARY_DIR}" "${CMAKE_CURRENT_SOURCE_DIR}"
+)
 MAYA_PLUGIN(${PROJECT_NAME})
-
-install(TARGETS ${PROJECT_NAME} ${MAYA_TARGET_TYPE} DESTINATION ${MODULE_NAME}/plug-ins/win64/${MAYA_VERSION})
